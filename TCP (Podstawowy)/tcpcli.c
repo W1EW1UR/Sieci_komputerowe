@@ -1,0 +1,89 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <signal.h>
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+
+int main()
+{
+	int retval;										// Zmienna która przechowywuje wyniki funkcji jak np: connect,send itp...
+    int sock;										// Tworzymy zmienna na gniazdo
+    struct sockaddr_in server_addr;			// Tworze structure dla adresu servera (do któ©ego wysyłam)
+    char message[] = "Hello, server!";	// Tworze zmienną wiadomosci i przypisuje do niej wartość
+    char buffor[1024];							// Tworze buffer czyli zmienna która będzie otrzymywała wiadomość od servera
+	 char adres_ip[] = "127.0.0.1";				// Adres IP	
+
+	sock = socket(AF_INET, SOCK_STREAM, 0); //Tworzę gniazdo 
+																// AF_INET = Typ dla IPv4
+																// SOCK_STREAM = Jakiś parametr
+																// 0 = Też nie wiem spójrz na 
+
+	 if (sock < 0) {		// Prosta obsługa błędów
+        perror("socket() error");
+        exit(1);
+    }
+	 
+	 
+	 server_addr.sin_family = AF_INET;						     // Jaki typ adresu SERVERA (IPv4 czy IPv6)
+    server_addr.sin_port = htons(12345);  					  // konwertuje numer portu SERVERA na kod bitowy
+    inet_pton(AF_INET, adres_ip , &server_addr.sin_addr);  // konwertuje adres IP SERVERA (localhost) na bitowy
+
+
+	retval = connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)); // Próbuje sie połącczyć 
+															// Sock = podaje mu gniazdo które stworzył ("połączenie")
+															//	(struct sockaddr*)&server_addr = musimy rzutować strukturę na ogólny typ adresu (taki wymóg funkcji)
+															// sizeof = Mówi jak "wielki" jest adres IP servera
+
+	 if (retval < 0) {			// obługa błędu
+        perror("connect() error");
+        close(sock);
+        exit(2);
+    }
+
+
+
+	retval =  send(sock, message, strlen(message), 0);		// Próbuje wysłać wiadomość
+																	// sock = wiadomo
+																	// message = wiadomosc ktora chcemy wyslac
+																	// strlen(message)) = długość wiadomości (ile bajtów ma wysłać 
+	
+	
+		 if (retval < 0) {			// obługa błędu
+        perror("send() error");
+        close(sock);
+        exit(3);
+    }
+
+
+
+	int bytes_received; // Zmienna mówiąca ile bitów odebralismy od servera 
+	
+	bytes_received = recv(sock, buffor, sizeof(buffor) - 1, 0);	 	//próbuje sie połączyć z serverem
+																	// sock = wiadomo
+																	// buffor = zmienna do której ma być przypisana wiadomość od SERVERA
+																	// sizeof(buffor) = ilość miejsca którą mamy dla wiadomości od SERVERA
+																	// a odejmujemy -1 ponieważ musimy zostawiamy miejsce na znak mówiący 
+																	// o końcu wiadomości "/0"
+	
+	
+   if (bytes_received > 0) {								   // Patrzy czy cokolwiek dostaliśmy
+        buffor[bytes_received] = '\0';					   // zakończenie napisu na ostatnim bit'cie
+        printf("Odpowiedź od serwera: %s\n", buffor); // Wypisuje wiadomość od servera
+    }
+
+
+
+
+	// Zamykanie gniazda i zakończenie programu
+    close(sock);
+    return 0;
+
+
+}

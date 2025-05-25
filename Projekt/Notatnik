@@ -1,0 +1,74 @@
+//===========================================================================
+// informacje o polaczeniach  - Struktura połączeń
+//===========================================================================
+
+struct conninfo{
+   int status;   
+   int sock;
+   unsigned char name[NAME_SIZE+1];
+   unsigned int name_pos;
+   int stepcnt;
+   
+   // Odbieranie
+   unsigned char recv_buffer[1000];
+   unsigned to_recv;
+   unsigned char *recv_ptr;   
+   
+   // Wysylanie
+   unsigned char send_buffer[1000];
+   unsigned to_send;
+   unsigned char *send_ptr;
+};
+
+
+
+
+
+/===========================================================================
+// odebrano 1 znak  i - indeks polaczenia  c-odebrany znak
+//===========================================================================
+void recv_char(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy conn[i].name
+{
+   //printf("recv-name_pos: %d\n", conn[i].name_pos);
+   
+   if (conn[i].name_pos<NAME_SIZE)		// jesli jest jeszcze miejsce w tablicy name (name_pos - pozycja w tablicy name)
+   {
+   	printf("Wiadomosc:")
+      conn[i].name[conn[i].name_pos]=c[i];
+      conn[i].name_pos++;
+      conn[i].stepcnt=0;
+   }
+}
+
+
+
+
+
+
+
+
+\033[0;0H	// Kordynaty
+\033[2J		// czyszczenie
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

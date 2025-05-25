@@ -1,0 +1,56 @@
+
+#include <stdio.h>
+#include <stdlib.h> 
+#include <string.h>
+#include <arpa/inet.h> 
+#include <sys/socket.h>
+
+
+#define SERVER_PORT 8600
+#define SERVER_IP "127.0.0.1"
+
+
+int main(int argc, char *argv[])
+{
+	
+	int sock;											// Inicjalizuje Sock 
+	struct sockaddr_in server_addr;				// Inicjalizuje strukture server_addr
+	char message[] = "Hello, UDP server!";		// Tworze zmienna message dla przechowywania wiadomosci ktora wysle
+	
+	
+	sock = socket(AF_INET, SOCK_DGRAM, 0);				// Tworzenie gniazda
+	if (sock < 0)												
+		{
+    	perror("Błąd przy tworzeniu gniazda");
+    	exit(1);
+		}
+			
+	memset(&server_addr, 0, sizeof(server_addr));			// W skrocie resetuje strukture by byla pusta
+	server_addr.sin_family = AF_INET;               		// Protokół IPv4
+	server_addr.sin_port = htons(SERVER_PORT);      		// Port w formacie sieciowym	 Konwersja
+	server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);   // Adres IP serwera            Konwersja 
+		
+		
+		
+		
+		
+	size_t buffor = strlen(message); 						// Dlugosc wiadomosci by funkcja SENDTO wiedziala ile bitow ma zarezerwowac na przeslanie -- Czyli buffor
+	size_t server_addr_size = sizeof(server_addr); 		// Wielkosc adresu servera    || Po chuj ? nie wiem.
+	
+	
+	/* (struct sockaddr *)&server_addr	<-- chuj wie  traktuj to jako "must have" || Niby rzutuje na adres servera ale dziwnie jakby nie mogl tego zrobic &server_addr po prostu */
+	
+	int send = sendto(sock, message, buffor, 0, (struct sockaddr *)&server_addr, server_addr_size);	// Funkcja do wysylania wiadomosci do servera
+		
+	if (send < 0) 
+	{
+    perror("Błąd przy wysyłaniu wiadomości");
+    exit(1);
+	}
+		
+		
+	shutdown( sock, SHUT_RDWR );
+	return 0;
+		
+		
+}
