@@ -75,10 +75,10 @@ struct conninfo{
 //================================================================
 // Ilość połączeń 
 //===========================================================================
-#define MAX_CONNECTION 2
+#define MAX_CONNECTION 4
 struct conninfo conn[MAX_CONNECTION];    // Tablica klientów - 20 miejsc na klientów gdzie każde miejsce mówi pewne informacje
 													  // jak naprzykład czy dane połączenie/klient czeka na dane czy chce je wysłać
-
+int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne ilości danych typów połączeń by były gloalne
 
 
 
@@ -97,20 +97,36 @@ struct conninfo conn[MAX_CONNECTION];    // Tablica klientów - 20 miejsc na kli
 //===========================================================================
 // dodanie nowego polaczenia		fd - deksryptor czyli gniazdo
 //===========================================================================
-void add_new_conn(int fd)
+void add_new_conn(int fd,char* name = "")
 {
     for (int i=0; i<MAX_CONNECTION; i++)	// Iteruje po wszystkich polaczeniach
-    
+    {
         if (conn[i].status == CONNSTATE_IDLE)  // Sprawdza czy stan polaczenia jest "NIEOBECNY"
         {
             bzero(&conn[i],sizeof(conn[i]));		// Czysci miejsce na polaczenie jesli cos zostalo
             
-            conn[i].sock = fd;		// Przypisuje gniazdo
+            conn[i].sock = fd;								// Przypisuje gniazdo
             conn[i].status = CONNSTATE_RECEIVING;		// Zmieniamy status polaczenia 
-            conn[i].name_pos = 0;    // Ustawiamy pozycje na 0 ??
-
+            conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
+            
+            
+            if(name != "")
+            {
+					   while(conn[i].name_pos<NAME_SIZE)
+					   {
+					
+					      conn[i].name[conn[i].name_pos]=c[j];
+					      conn[i].name_pos++;
+					      conn[i].stepcnt=0;
+					      j++;
+					
+						}
+				}            
+            
+				printf ("Udało sie dodać połączenie\n");
             break;
         }
+	 }
 }
 
 
@@ -160,6 +176,9 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	printf("\033[2J");
 	printf("\033[20;0H");
 	
+	int len = 0;	
+	
+	
 	switch (c[1])
 	{
 	case 'N':
@@ -181,33 +200,52 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 // ==========================================
 	
 	case 'T':
+	printf ("Komenda na utworzenie polaczenia TCP\n");
 	
-	printf ("Komenda na utworzenie polaczenia TCP");
+	int new_TCP_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);			//Tworze gniazdo TCP NIEBLOKUJĄCY
+	
+	add_new_conn(new_TCP_socket,conn[i].name);
+	printf ("koniec procesu dodawnia");
+	
 	break;	
 
 // ==========================================
 
 	case 'U':
+	printf ("Komenda na utworzenie polaczenia UDP\n");
 	
-	printf ("Komenda na utworzenie polaczenia TCP");
+	int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
+	
+	add_new_conn(new_UDP_socket,conn[i].name);
+	
 	break;		
 
 // ==========================================
 
-	case 'A':
-	
-
-		
+	case 'A':	//aktywne polaczenia
 	printf ("Komenda A");
+
+	len = snprintf(conn[i].send_buffer, sizeof(conn[i].send_buffer), "Ilosc aktywnych polaczen: %d", MAX_CONNECTION-free_conn);
+	
+   send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
+   
+	printf("\nSend: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG     
+
+	
 	break;	
 
 // ==========================================
 	
-	case 'F':
-	
-
-		
+	case 'F': //Wolne polaczenia
 	printf ("Komenda F");
+	
+	len = snprintf(conn[i].send_buffer, sizeof(conn[i].send_buffer), "Ilosc wolnych polaczen: %d", free_conn);
+	
+	send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
+   
+   printf("\n: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG     
+
+   
 	break;
 
 	}
@@ -239,10 +277,6 @@ void send_char(int i)
   {
       conn[i].to_send--;	// ? nie wiem
       conn[i].send_ptr++;
-  }
-  else
-  {
-      conn[i].status = CONNSTATE_CLOSING;  // Jesli wszystko zostalo wyslane to zamykamy polaczenie 				[[[	NIEDOZWOLONE W PROJEKCIE	]]]
   }
 }
 
@@ -298,7 +332,7 @@ int main(int argc, char *argv[])
    
 	 int listen_sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0); // Tworze Socket 
 	 																		// AF_INET - Typ IPv4
-	 																		// SOCK_STREAM - Typ | Dla TCP (za bardzo techniczne)
+	 																		// SOCK_STREAM - Typ protokołu | Dla TCP 
 	 																		// SOCK_NONBLOCK - Flaga | Nieblokujący 
 	 																		// 0 - Protokół | Niech system sam se wybierze co pasuje
     if(( listen_sock ) < 0 ) 			// Obługa błędów
@@ -316,7 +350,7 @@ int main(int argc, char *argv[])
    
     socklen_t len = sizeof( serwer ); 	// Długość adresu SERVERA
     
-	 retval = bind( listen_sock,(struct sockaddr *) &serwer, len ); // Przypisuje gniazdo Servera do portu i adresu    
+	 retval = bind( listen_sock,(struct sockaddr *) &serwer, len ); // Przypisuje gniazdo Servera do portu i adresu servera
     																		// listen_sock - gniazdo które chcemy przypisać
     																		// (struct sockaddr *) &serwer - adres servera
     																		// len - długość adresu servera 
@@ -347,26 +381,19 @@ int main(int argc, char *argv[])
 
 
 
-FD_ZERO(&readfds);		// Zerowanie zbioru dla gniazd do odczytu
-FD_ZERO(&writefds);		// Zerowanie zbioru dla gniazd do zapisu
-maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna w skrócie mówi ile jest obecnie połączeń)
 
-    // Dodaj gniazdo nasłuchujące do zbioru read
-    FD_SET(listen_sock, &readfds);					// Dodaje gniazdo nasłuchujące do zbioru readfds bo select będzie sprawdzał
-    															// właśnie w tym zbiorze a dokłądniej na tym listen_sock czy ktoś sie nie 
-    															// chce dobić do nas
- 
- 
- 
-	 // Ustawienie timeout'u by select nie czekał wieczność
-    struct timeval timeout;
-    timeout.tv_sec = 0;			// 0s
-    timeout.tv_usec = 100000; // 100ms timeout   
-   
-   
-   
-   
-   
+
+
+
+
+
+
+
+
+
+
+
+
    
    printf("\033[2J");	// czyszcze ekran przed petla
    
@@ -504,16 +531,13 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         else if (conn[i].status == CONNSTATE_SENDING && FD_ISSET(conn[i].sock, &writefds))	// KLIENT "ODBIERA"
         {
         	
-            int retval = send(conn[i].sock, conn[i].send_ptr, 1, MSG_NOSIGNAL);  // Wysyłąnie danych
+            int retval = send(conn[i].sock, conn[i].send_buffer, sizeof(conn[i].send_buffer), MSG_NOSIGNAL);  // Wysyłąnie danych         
             
-				printf("\nSend: %d  \n", retval); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG              
-            
-            
-            
-            if (retval > 0) // to co wcześniej
-                send_char(i);
-            else
-                close_conn(i);
+            printf("\033[2J");
+				printf("\033[20;0H");
+				printf("GŁÓWNA PĘTLA      ");  
+				printf("\nSend: %d  \n", retval); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG                 
+         
         }
 
 
@@ -536,16 +560,16 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 // DEKORACJA
 // ====================================================================	
 	
-    int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne któ©e będą pokazywać ile jest danych połączeń
+    free_conn = 0, recv_conn = 0, send_conn = 0; // Zeruje wartości bo bez tego będą szły w nieskończoność
     
     
     for (int i = 0; i < MAX_CONNECTION; i++) // Zaczynam iterować po połączeniach
     {
         switch (conn[i].status) // jako wartość SWITCHA to stan połączenia
         {
-            case CONNSTATE_IDLE: free_conn++; break;       // Jeśli jest wolne to dodaje +1
-            case CONNSTATE_RECEIVING: recv_conn++; break;  // Jeśli jest wolne to dodaje +1
-            case CONNSTATE_SENDING: send_conn++; break;    // Jeśli jest wolne to dodaje +1
+            case CONNSTATE_IDLE: 		free_conn++; 	break;       // Jeśli jest wolne to dodaje +1
+            case CONNSTATE_RECEIVING:	recv_conn++; 	break; 		 // Jeśli jest odbierajace to dodaje +1
+            case CONNSTATE_SENDING: 	send_conn++; 	break;   	 // Jeśli jest wysyłajace to dodaje +1
         }
         printf("\033[%d;15H		\nNazwa uzytkownika: %s \n",i+1,conn[i].name); 
     }
