@@ -92,12 +92,26 @@ int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne ilości da
 
 
 
+//===========================================================================
+// odebrano 1 znak  i - indeks polaczenia  c-odebrany znak
+//===========================================================================
+void save_name(int i, unsigned char* c)		//zapisujemy nazwe
+{
+    int j = 0;
+    while (conn[i].name_pos < NAME_SIZE) {
+        conn[i].name[conn[i].name_pos] = c[j];
+        conn[i].name_pos++;
+        j++;
+    }
+}
+
+
 
 
 //===========================================================================
 // dodanie nowego polaczenia		fd - deksryptor czyli gniazdo
 //===========================================================================
-void add_new_conn(int fd,char* name = "")
+void add_new_conn(int fd,char* name)
 {
     for (int i=0; i<MAX_CONNECTION; i++)	// Iteruje po wszystkich polaczeniach
     {
@@ -112,15 +126,7 @@ void add_new_conn(int fd,char* name = "")
             
             if(name != "")
             {
-					   while(conn[i].name_pos<NAME_SIZE)
-					   {
-					
-					      conn[i].name[conn[i].name_pos]=c[j];
-					      conn[i].name_pos++;
-					      conn[i].stepcnt=0;
-					      j++;
-					
-						}
+					save_name(i,name);
 				}            
             
 				printf ("Udało sie dodać połączenie\n");
@@ -146,28 +152,6 @@ void close_conn(int i)
 
 
 
-
-//===========================================================================
-// odebrano 1 znak  i - indeks polaczenia  c-odebrany znak
-//===========================================================================
-void save_name(int i, unsigned char* c)		//zapisujemy nazwe
-{
-   //printf("recv-name_pos: %d\n", conn[i].name_pos);
-   
-   int j = 0;
-   while(conn[i].name_pos<NAME_SIZE)
-   {
-
-      conn[i].name[conn[i].name_pos]=c[j];
-      conn[i].name_pos++;
-      conn[i].stepcnt=0;
-      j++;
-
-	}
-}
-
-
-
 //===========================================================================
 // odebrano 1 znak  i - indeks polaczenia  c-odebrany znak
 //===========================================================================
@@ -184,11 +168,11 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	case 'N':
 	printf("\033[19;0H wiadomosc: %s",c);	
 	
-	char *start = strchr(c, ':');
-	char *end = strchr(c, ';');
+	char *start = strchr(c, ';');
+	char *end = strchr(c, ':');
 	size_t length = end - start - 1;
 	
-	char *wynik = malloc(length + 1);  // +1 na '\			//|
+	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
 	strncpy(wynik, start + 1, end - start - 1);				//|	To jest z chata bo kocham jezyk C
 	wynik[length] = '\0';  // Dodajemy null-terminator		//|
 	printf("   Wartość : %s",wynik);								//|
