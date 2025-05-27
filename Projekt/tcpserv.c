@@ -59,6 +59,9 @@ struct conninfo{
    unsigned char name[NAME_SIZE+1];
    unsigned int name_pos;
    int stepcnt;
+	int id_client;
+	int id_sub_client;   
+   
    
    // Odbieranie
    unsigned char recv_buffer[1000];
@@ -79,7 +82,7 @@ struct conninfo{
 struct conninfo conn[MAX_CONNECTION];    // Tablica klientów - 20 miejsc na klientów gdzie każde miejsce mówi pewne informacje
 													  // jak naprzykład czy dane połączenie/klient czeka na dane czy chce je wysłać
 int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne ilości danych typów połączeń by były gloalne
-
+int id_client=0;
 
 
 
@@ -111,7 +114,7 @@ void save_name(int i, unsigned char* c)		//zapisujemy nazwe
 //===========================================================================
 // dodanie nowego polaczenia		fd - deksryptor czyli gniazdo
 //===========================================================================
-void add_new_conn(int fd,char* name)
+void add_new_conn(int fd,char* name,int main_id,int sub_id)
 {
     for (int i=0; i<MAX_CONNECTION; i++)	// Iteruje po wszystkich polaczeniach
     {
@@ -122,7 +125,7 @@ void add_new_conn(int fd,char* name)
             conn[i].sock = fd;								// Przypisuje gniazdo
             conn[i].status = CONNSTATE_RECEIVING;		// Zmieniamy status polaczenia 
             conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
-            
+            conn[i].id_client = main_id;
             
 				if (name != NULL && strlen(name) > 0)
 				{
@@ -188,7 +191,9 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	int new_TCP_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);			//Tworze gniazdo TCP NIEBLOKUJĄCY
 	
-	add_new_conn(new_TCP_socket,conn[i].name);
+	conn[i].id_sub_client++;	
+	
+	add_new_conn(new_TCP_socket,conn[i].name,id_client,conn[i].id_sub_client);
 	printf ("koniec procesu dodawnia");
 	
 	break;	
@@ -200,7 +205,9 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
 	
-	add_new_conn(new_UDP_socket,conn[i].name);
+	conn[i].id_sub_client++;
+
+	add_new_conn(new_UDP_socket,conn[i].name,id_client,conn[i].id_sub_client);
 	
 	break;		
 
@@ -467,8 +474,10 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         int newsock = accept(listen_sock, NULL, NULL);
         if (newsock >= 0)
         {
+        	
+        		id_client++;
         		// Dodaje nowe połączenie
-            add_new_conn(newsock,NULL);
+            add_new_conn(newsock,NULL,id_client,0);        
         }
     }
 
@@ -555,7 +564,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
             case CONNSTATE_RECEIVING:	recv_conn++; 	break; 		 // Jeśli jest odbierajace to dodaje +1
             case CONNSTATE_SENDING: 	send_conn++; 	break;   	 // Jeśli jest wysyłajace to dodaje +1
         }
-        printf("\033[%d;15H		\nNazwa uzytkownika: %s \n",i+1,conn[i].name); 
+        printf("\033[%d;15H		\nNazwa uzytkownika: %s \033[35Gid: %d %d \n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client); 
     }
 
     static int loopnr = 0;  // Ile razy sie cały pogram wykonał
