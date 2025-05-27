@@ -124,10 +124,10 @@ void add_new_conn(int fd,char* name)
             conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
             
             
-            if(name != "")
-            {
-					save_name(i,name);
-				}            
+				if (name != NULL && strlen(name) > 0)
+				{
+				    save_name(i, name);
+				}          
             
 				printf ("Udało sie dodać połączenie\n");
             break;
@@ -467,6 +467,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         int newsock = accept(listen_sock, NULL, NULL);
         if (newsock >= 0)
         {
+        		printf("JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - JEBAĆ - ");
         		// Dodaje nowe połączenie
             add_new_conn(newsock,NULL);
         }

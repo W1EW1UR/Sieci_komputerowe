@@ -124,10 +124,10 @@ void add_new_conn(int fd,char* name)
             conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
             
             
-            if(name != "")
-            {
-					save_name(i,name);
-				}            
+				if (name != NULL && strlen(name) > 0)
+				{
+				    save_name(i, name);
+				}          
             
 				printf ("Udało sie dodać połączenie\n");
             break;
@@ -168,8 +168,8 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	case 'N':
 	printf("\033[19;0H wiadomosc: %s",c);	
 	
-	char *start = strchr(c, ';');
-	char *end = strchr(c, ':');
+	char *start = strchr(c, ':');
+	char *end = strchr(c, ';');
 	size_t length = end - start - 1;
 	
 	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
