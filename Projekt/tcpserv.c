@@ -60,7 +60,8 @@ struct conninfo{
    unsigned int name_pos;
    int stepcnt;
 	int id_client;
-	int id_sub_client;   
+	int id_sub_client;
+	int pom_sub_id;   
    
    
    // Odbieranie
@@ -78,7 +79,7 @@ struct conninfo{
 //================================================================
 // Ilość połączeń 
 //===========================================================================
-#define MAX_CONNECTION 4
+#define MAX_CONNECTION 15
 struct conninfo conn[MAX_CONNECTION];    // Tablica klientów - 20 miejsc na klientów gdzie każde miejsce mówi pewne informacje
 													  // jak naprzykład czy dane połączenie/klient czeka na dane czy chce je wysłać
 int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne ilości danych typów połączeń by były gloalne
@@ -131,6 +132,10 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id)
 				{
 				    save_name(i, name);
 				}          
+				if(sub_id != 0)
+				{
+					 conn[i].id_sub_client = sub_id;
+				}            
             
 				printf ("Udało sie dodać połączenie\n");
             break;
@@ -191,9 +196,9 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	int new_TCP_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);			//Tworze gniazdo TCP NIEBLOKUJĄCY
 	
-	conn[i].id_sub_client++;	
+	conn[i].pom_sub_id++;	
 	
-	add_new_conn(new_TCP_socket,conn[i].name,id_client,conn[i].id_sub_client);
+	add_new_conn(new_TCP_socket,conn[i].name,id_client,conn[i].pom_sub_id);
 	printf ("koniec procesu dodawnia");
 	
 	break;	
@@ -205,9 +210,9 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
 	
-	conn[i].id_sub_client++;
+	conn[i].pom_sub_id++;
 
-	add_new_conn(new_UDP_socket,conn[i].name,id_client,conn[i].id_sub_client);
+	add_new_conn(new_UDP_socket,conn[i].name,id_client,conn[i].pom_sub_id);
 	
 	break;		
 
