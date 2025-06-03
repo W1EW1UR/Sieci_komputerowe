@@ -59,9 +59,12 @@ struct conninfo{
    unsigned char name[NAME_SIZE+1];
    unsigned int name_pos;
    int stepcnt;
+   char type;
+   
 	int id_client;
 	int id_sub_client;
 	int pom_sub_id;   
+	uint32_t full_id;
    
    
    // Odbieranie
@@ -115,7 +118,7 @@ void save_name(int i, unsigned char* c)		//zapisujemy nazwe
 //===========================================================================
 // dodanie nowego polaczenia		fd - deksryptor czyli gniazdo
 //===========================================================================
-void add_new_conn(int fd,char* name,int main_id,int sub_id)
+void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
 {
     for (int i=0; i<MAX_CONNECTION; i++)	// Iteruje po wszystkich polaczeniach
     {
@@ -127,6 +130,7 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id)
             conn[i].status = CONNSTATE_RECEIVING;		// Zmieniamy status polaczenia 
             conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
             conn[i].id_client = main_id;
+            conn[i].type = type;
             
 				if (name != NULL && strlen(name) > 0)
 				{
@@ -136,6 +140,8 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id)
 				{
 					 conn[i].id_sub_client = sub_id;
 				}            
+				
+				conn[i].full_id = (conn[i].id_client << 16) | conn[i].id_sub_client;
             
 				printf ("Udało sie dodać połączenie\n");
             break;
@@ -168,6 +174,15 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	printf("\033[2J");
 	printf("\033[20;0H");
 	
+	char *start = strchr(c, ':');									//|
+	char *end = strchr(c, ';');									//|
+	size_t length = end - start - 1;								//|
+																			//|	Wyznaczam wartość z komendy 
+	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
+	strncpy(wynik, start + 1, end - start - 1);				//|	
+	wynik[length] = '\0';  // Dodajemy null-terminator		//|
+	printf("   Wartość : %s",wynik);								//|	
+	
 	int len = 0;	
 	
 	
@@ -176,17 +191,13 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	case 'N':
 	printf("\033[19;0H wiadomosc: %s",c);	
 	
-	char *start = strchr(c, ':');
-	char *end = strchr(c, ';');
-	size_t length = end - start - 1;
-	
-	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
-	strncpy(wynik, start + 1, end - start - 1);				//|	To jest z chata bo kocham jezyk C
-	wynik[length] = '\0';  // Dodajemy null-terminator		//|
-	printf("   Wartość : %s",wynik);								//|
 	
 	save_name(i,wynik);
-	free(wynik);														
+	send(conn[i].sock, "testowy string ", len , MSG_NOSIGNAL);  // Wysyłąnie danych
+	free(wynik);						
+
+   send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
+									
 	break;	
 
 // ==========================================
@@ -198,7 +209,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	conn[i].pom_sub_id++;	
 	
-	add_new_conn(new_TCP_socket,conn[i].name,id_client,conn[i].pom_sub_id);
+	add_new_conn(new_TCP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'T');
 	printf ("koniec procesu dodawnia");
 	
 	break;	
@@ -212,7 +223,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	conn[i].pom_sub_id++;
 
-	add_new_conn(new_UDP_socket,conn[i].name,id_client,conn[i].pom_sub_id);
+	add_new_conn(new_UDP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'U');
 	
 	break;		
 
@@ -243,6 +254,23 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 
    
 	break;
+	
+	// ==========================================
+	
+	case 'K': //Wolne polaczenia
+	printf ("Komenda K");
+	
+	printf("\033[19;0H wiadomosc: %s",c);	
+	
+	
+   for (int i = 0; i < MAX_CONNECTION; i++)
+   {
+   	if(*wynik == conn[i].full_id)
+   		conn[i].status = CONNSTATE_CLOSING;
+   }
+   
+   free(wynik);	
+	break;
 
 	}
 }
@@ -271,7 +299,7 @@ void send_char(int i)
 {
   if (conn[i].to_send>0) // Sprawdza czy zostalo cos jeszcze do wyslania
   {
-      conn[i].to_send--;	// ? nie wiem
+      conn[i].to_send--;	// Pointer który pomaga wysylac bufor
       conn[i].send_ptr++;
   }
 }
@@ -482,7 +510,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         	
         		id_client++;
         		// Dodaje nowe połączenie
-            add_new_conn(newsock,NULL,id_client,0);        
+            add_new_conn(newsock,NULL,id_client,0,'C');        
         }
     }
 
@@ -540,11 +568,14 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 
 
 
-        else if (conn[i].status == CONNSTATE_CLOSING)   // No jak połączenie chce sie zamknąć to niech sie zamknie
-        {
-        		printf("\nZamknieto polaczenie: %d", i); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG  
-            close_conn(i);
-        }
+
+
+
+        else if (conn[i].status == CONNSTATE_CLOSING)   // No jak połączenie chce sie zamknąć to niech sie zamknie    	
+        {																																						
+        		printf("\nZamknieto polaczenie: %d", conn[i].full_id); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG  						
+            close_conn(i);																																
+        }																																						
     
     }
 
@@ -556,7 +587,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 	
 // ====================================================================
 // DEKORACJA
-// ====================================================================	
+// ====================================================================
 	
     free_conn = 0, recv_conn = 0, send_conn = 0; // Zeruje wartości bo bez tego będą szły w nieskończoność
     
@@ -569,7 +600,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
             case CONNSTATE_RECEIVING:	recv_conn++; 	break; 		 // Jeśli jest odbierajace to dodaje +1
             case CONNSTATE_SENDING: 	send_conn++; 	break;   	 // Jeśli jest wysyłajace to dodaje +1
         }
-        printf("\033[%d;15H		\nNazwa uzytkownika: %s \033[35Gid: %d %d \n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client); 
+        printf("\033[%d;15H		\nNazwa uzytkownika: %s \033[35Gid: %d %d \033[45G Full_id: %d   \033[65GTyp: %c\n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client,conn[i].full_id,conn[i].type); 
     }
 
     static int loopnr = 0;  // Ile razy sie cały pogram wykonał

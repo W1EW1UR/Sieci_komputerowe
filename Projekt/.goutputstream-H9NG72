@@ -193,7 +193,6 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	
 	save_name(i,wynik);
-	send(conn[i].sock, "testowy string ", len , MSG_NOSIGNAL);  // Wysyłąnie danych
 	free(wynik);						
 
    send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
@@ -587,7 +586,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 	
 // ====================================================================
 // DEKORACJA
-// ====================================================================
+// ====================================================================	
 	
     free_conn = 0, recv_conn = 0, send_conn = 0; // Zeruje wartości bo bez tego będą szły w nieskończoność
     
