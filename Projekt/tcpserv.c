@@ -3,10 +3,6 @@
 
 
 
-
-
-
-
 */
 //===========================================================================
 #include <stdio.h>
@@ -15,10 +11,11 @@
 #include <arpa/inet.h> // inet_pton()
 #include <sys/socket.h>
 
+
 // Server program
 #include <arpa/inet.h>
 #include <errno.h>
-#include <netinet/in.h>
+#include <netinet/in.h>         
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,7 +129,7 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
             conn[i].id_client = main_id;
             conn[i].type = type;
             
-				if (name != NULL && strlen(name) > 0)
+				if ((name != NULL) && (strlen(name) > 0))
 				{
 				    save_name(i, name);
 				}          
@@ -147,6 +144,7 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
             break;
         }
 	 }
+
 }
 
 
@@ -183,7 +181,13 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	wynik[length] = '\0';  // Dodajemy null-terminator		//|
 	printf("   Wartość : %s",wynik);								//|	
 	
+    //conn[i].status = CONNSTATE_SENDING; // Po tym jak otrzymamy od klienta komende ustawiamy go na 
+                                        // odczyt
+
 	int len = 0;	
+
+    int required_length;
+    char *send_buffer;
 	
 	
 	switch (c[1])
@@ -193,11 +197,10 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	
 	save_name(i,wynik);
-	send(conn[i].sock, "testowy string ", len , MSG_NOSIGNAL);  // Wysyłąnie danych
-	free(wynik);						
 
-   send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
-									
+    send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
+
+	free(wynik);						        
 	break;	
 
 // ==========================================
@@ -210,21 +213,37 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	conn[i].pom_sub_id++;	
 	
 	add_new_conn(new_TCP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'T');
+
 	printf ("koniec procesu dodawnia");
+
+
+    //fragment kodu odpowiedzialny za wysyłanie wiadomości (pamiętać o free bo segfault)
+    required_length = snprintf(NULL, 0, "#TOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
+    send_buffer = malloc(required_length + 1);
+    sprintf(send_buffer,"#TOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
+    send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
+    free(send_buffer);
 	
 	break;	
 
 // ==========================================
 
-	case 'U':
+	case 'U':   //MOJE MIESO
 	printf ("Komenda na utworzenie polaczenia UDP\n");
 	
 	int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
 	
 	conn[i].pom_sub_id++;
 
+    required_length = snprintf(NULL, 0, "#UOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
+    send_buffer = malloc(required_length + 1);
 	add_new_conn(new_UDP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'U');
-	
+    sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
+    send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
+    free(send_buffer);
+
+    conn[i].status = CONNSTATE_SENDING;
+
 	break;		
 
 // ==========================================
@@ -232,12 +251,15 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	case 'A':	//aktywne polaczenia
 	printf ("Komenda A");
 
-	len = snprintf(conn[i].send_buffer, sizeof(conn[i].send_buffer), "Ilosc aktywnych polaczen: %d", MAX_CONNECTION-free_conn);
-	
-   send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
    
-	printf("\nSend: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG     
+	printf("\nSend: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG    
+                                                    // MUSHROOM! MUSHROOM!
 
+    required_length = snprintf(NULL, 0, "#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
+    send_buffer = malloc(required_length + 1);
+    sprintf(send_buffer,"#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
+    send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
+    free(send_buffer);
 	
 	break;	
 
@@ -246,11 +268,11 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	case 'F': //Wolne polaczenia
 	printf ("Komenda F");
 	
-	len = snprintf(conn[i].send_buffer, sizeof(conn[i].send_buffer), "Ilosc wolnych polaczen: %d", free_conn);
-	
-	send(conn[i].sock, conn[i].send_buffer, len , MSG_NOSIGNAL);  // Wysyłąnie danych
-   
-   printf("\n: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG     
+	required_length = snprintf(NULL, 0, "#FOK@FREE:%d;!", free_conn);
+    send_buffer = malloc(required_length + 1);
+    sprintf(send_buffer,"#FOK@FREE:%d;!", free_conn);
+    send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
+    free(send_buffer);
 
    
 	break;
@@ -273,8 +295,14 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	break;
 
 	}
+
+    //conn[i].status = CONNSTATE_RECEIVING; // UStawiamy klienta spowrotem na wysyłanie po 
+                                    // poradzeniu sobie z komendami
+    
 }
 
+// Wbijasz se na strone z tymi sieciami i będziesz starał sie wysłać poprawne odpowiedzi ndo
+// klienta
 
 
 
@@ -303,12 +331,6 @@ void send_char(int i)
       conn[i].send_ptr++;
   }
 }
-
-
-
-
-
-
 
 
 
@@ -343,7 +365,7 @@ int main(int argc, char *argv[])
     
     
         
-	 int retval = inet_pton( AF_INET, SERWER_IP, & serwer.sin_addr );    // Konwertuje IP na BINARNY
+	int retval = inet_pton( AF_INET, SERWER_IP, & serwer.sin_addr );    // Konwertuje IP na BINARNY
     
     if( retval <= 0 ) // Obsługa błędów 
     {
@@ -354,7 +376,7 @@ int main(int argc, char *argv[])
 
 
    
-	 int listen_sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0); // Tworze Socket 
+	int listen_sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0); // Tworze Socket 
 	 																		// AF_INET - Typ IPv4
 	 																		// SOCK_STREAM - Typ protokołu | Dla TCP 
 	 																		// SOCK_NONBLOCK - Flaga | Nieblokujący 
@@ -408,16 +430,6 @@ int main(int argc, char *argv[])
 
 
 
-
-
-
-
-
-
-
-
-
-
    
    printf("\033[2J");	// czyszcze ekran przed petla
    
@@ -444,12 +456,6 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
     struct timeval timeout;
     timeout.tv_sec = 0;			// 0s
     timeout.tv_usec = 100000; // 100ms timeout   
-
-
-
-
-
-
 
 
 
@@ -508,8 +514,8 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         if (newsock >= 0)
         {
         	
-        		id_client++;
-        		// Dodaje nowe połączenie
+        	id_client++;
+        	// Dodaje nowe połączenie
             add_new_conn(newsock,NULL,id_client,0,'C');        
         }
     }
@@ -565,9 +571,6 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 				printf("\nSend: %d  \n", retval); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG                 
          
         }
-
-
-
 
 
 
