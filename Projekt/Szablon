@@ -1,0 +1,346 @@
+//=========================================================================
+/*   SERVER TCP SELECT - SZABLON
+*/
+//===========================================================================
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+//===========================================================================
+// status połączenia
+//===========================================================================
+#define CONNSTATE_IDLE 0
+#define CONNSTATE_RECEIVING 1
+#define CONNSTATE_SENDING 2
+#define CONNSTATE_CLOSING 3
+
+//===========================================================================
+// dane wstępne serwera
+//===========================================================================
+#define NAME_SIZE 20
+#define SERWER_IP "0.0.0.0"
+int port_number;
+struct sockaddr_in serwer;
+
+int free_conn = 0, recv_conn = 0, send_conn = 0; // Tworze zmienne globalne
+
+
+//===========================================================================
+// informacje o połączeniach
+//===========================================================================
+struct conninfo {
+   int status;
+   int sock;
+   unsigned char name[NAME_SIZE+1];
+   unsigned int name_pos;
+   int stepcnt;
+   unsigned char send_buffer[1000];
+   unsigned to_send;
+   unsigned char *send_ptr;
+};
+
+#define MAX_CONNECTION 10
+struct conninfo conn[MAX_CONNECTION];
+
+//===========================================================================
+// dodanie nowego połączenia
+//===========================================================================
+void add_new_conn(int fd) {
+    for (int i = 0; i < MAX_CONNECTION; i++) {
+        if (conn[i].status == CONNSTATE_IDLE) {
+            bzero(&conn[i], sizeof(conn[i]));
+            conn[i].sock = fd;
+            conn[i].status = CONNSTATE_RECEIVING;
+            conn[i].name_pos = 0;
+            break;
+        }
+    }
+}
+
+//===========================================================================
+// zamknięcie połączenia
+//===========================================================================
+void close_conn(int i) {
+   close(conn[i].sock);
+   bzero(&conn[i], sizeof(conn[i]));
+   conn[i].status = CONNSTATE_IDLE;
+}
+
+//===========================================================================
+// odebrano znak - przykładowa obsługa odbioru
+//===========================================================================
+void recv_char(int i, unsigned char c) {
+   if (conn[i].name_pos < NAME_SIZE) {
+      conn[i].name[conn[i].name_pos++] = c;
+      conn[i].stepcnt = 0;
+   }
+}
+
+//===========================================================================
+// połączenie zakończone (recv zwróciło 0)
+//===========================================================================
+void recv_zero(int i) {
+    conn[i].status = CONNSTATE_SENDING;
+    sprintf((char*)conn[i].send_buffer, "Dziekujemy za dane, %s\r\n", conn[i].name);
+    conn[i].to_send = strlen((char*)conn[i].send_buffer);
+    conn[i].send_ptr = conn[i].send_buffer;
+}
+
+//===========================================================================
+// wysłano jeden znak, kontynuuj lub zakończ
+//===========================================================================
+void send_char(int i) {
+  if (conn[i].to_send > 0) {
+      conn[i].to_send--;
+      conn[i].send_ptr++;
+  } else {
+      conn[i].status = CONNSTATE_CLOSING;
+  }
+}
+
+void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy conn[i].name
+{
+	printf("\033[2J");
+	printf("\033[20;0H");
+
+	printf("Otrzymana Komenda : %s \n",c);			
+	char* buffer;
+	
+	
+	char *start = strchr(c, ':');									//|
+	char *end = strchr(c, ';');									//|
+	size_t length = end - start - 1;								//|
+																			//|	Wyznaczam wartość z komendy 
+	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
+	strncpy(wynik, start + 1, end - start - 1);				//|	
+	wynik[length] = '\0';  // Dodajemy null-terminator		//|
+	printf("   Wartość : %s /n",wynik);							//|	
+	
+
+
+	switch (c[1])
+	{
+		
+	case 'C':
+					        
+	break;	
+
+// ==========================================
+	case 'N':
+					        
+	break;	
+
+// ==========================================
+	
+	case 'T':
+
+	
+	break;	
+
+// ==========================================
+
+	case 'U':   
+
+
+	break;		
+
+// ==========================================
+
+	case 'A':	//aktywne polaczenia
+	printf ("Komenda A");
+
+   
+	printf("\nSend: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG    
+                                                    // MUSHROOM! MUSHROOM!
+
+    length = snprintf(NULL, 0, "#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
+    buffer = malloc(length + 1);
+    sprintf(buffer,"#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
+    send(conn[i].sock, buffer, length, MSG_NOSIGNAL); 
+    free(buffer);
+	
+	break;	
+
+// ==========================================
+	
+	case 'F': //Wolne polaczenia
+	printf ("Komenda F");
+	
+	length = snprintf(NULL, 0, "#FOK@FREE:%d;!", free_conn);
+    buffer = malloc(length + 1);
+    sprintf(buffer,"#FOK@FREE:%d;!", free_conn);
+    send(conn[i].sock, buffer, length, MSG_NOSIGNAL); 
+    free(buffer);
+
+   
+	break;
+	
+	// ==========================================
+	
+	case 'K': 
+	
+	break; 
+	}
+}
+
+
+
+//===========================================================================
+// główna pętla serwera
+//===========================================================================
+int main(int argc, char *argv[]) {
+    fd_set readfds, writefds;
+    int maxfd;
+
+    bzero(&serwer, sizeof(serwer));
+    bzero(&conn, sizeof(conn));
+
+    if (argc < 2) {
+        perror("Nie podano portu");
+        exit(1);
+    }
+
+    port_number = atoi(argv[1]);
+    serwer.sin_family = AF_INET;
+    serwer.sin_port = htons(port_number);
+
+    if (inet_pton(AF_INET, SERWER_IP, &serwer.sin_addr) <= 0) {
+        perror("inet_pton() ERROR");
+        exit(2);
+    }
+
+    int listen_sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    if (listen_sock < 0) {
+        perror("socket() ERROR");
+        exit(3);
+    }
+
+    if (bind(listen_sock, (struct sockaddr *)&serwer, sizeof(serwer)) < 0) {
+        perror("bind() ERROR");
+        exit(4);
+    }
+
+    if (listen(listen_sock, 20) < 0) {
+        perror("listen() ERROR");
+        exit(5);
+    }
+
+
+// ============================================================================
+
+
+
+
+
+
+
+
+
+
+
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
+        maxfd = listen_sock;
+
+        FD_SET(listen_sock, &readfds);
+
+
+
+
+        for (int i = 0; i < MAX_CONNECTION; i++) {
+            if (conn[i].status == CONNSTATE_RECEIVING) {
+                FD_SET(conn[i].sock, &readfds);
+                if (conn[i].sock > maxfd) maxfd = conn[i].sock;
+            } else if (conn[i].status == CONNSTATE_SENDING) {
+                FD_SET(conn[i].sock, &writefds);
+                if (conn[i].sock > maxfd) maxfd = conn[i].sock;
+            }
+        }
+
+
+        struct timeval timeout = {.tv_sec = 0, .tv_usec = 100000}; 						// Czas do timeout'u
+
+        int activity = select(maxfd + 1, &readfds, &writefds, NULL, &timeout);		// SELECT - serce programu
+        if (activity < 0) {
+            perror("select() ERROR");
+            continue;
+        }
+
+
+
+
+
+
+
+
+
+
+			// Sprawdzamy czy jest nowe połączenie 
+        if (FD_ISSET(listen_sock, &readfds)) {
+            int newsock = accept(listen_sock, NULL, NULL);
+            int retval = recv(newsock);
+            if (newsock >= 0) {
+                commands(newsock);		// jesli jest to dodajemy je
+            }
+        }
+
+
+
+
+
+			// Lecimy po wszystkich połączeniach i sie nimi zajmujemy
+        for (int i = 0; i < MAX_CONNECTION; i++) {
+        	
+        	
+        		// jeśli klient chce coś wysłać to odbieramy od niego RECV()
+            if (conn[i].status == CONNSTATE_RECEIVING && FD_ISSET(conn[i].sock, &readfds)) {
+                unsigned char c;
+                int ret = recv(conn[i].sock, &c, 1, 0);
+                if (ret > 0)
+                    recv_char(i, c);
+                else
+                    recv_zero(i);
+                    
+                    
+        		// jeśli klient chce coś wysłać to odbieramy od niego RECV()                    
+            } else if (conn[i].status == CONNSTATE_SENDING && FD_ISSET(conn[i].sock, &writefds)) {
+                int ret = send(conn[i].sock, conn[i].send_ptr, 1, MSG_NOSIGNAL);
+                if (ret > 0)
+                    send_char(i);
+                else
+                    close_conn(i);
+                    
+                    
+                    
+        		// jeśli klient chce się rozłączyć to go rozłączamy |||	SERVER NIE MOZE SAM GO ROZŁĄCZYĆ BEZ POWODU	|||                    
+            } else if (conn[i].status == CONNSTATE_CLOSING) {
+                close_conn(i);
+            }
+        }
+
+
+
+		  // ==================================================================================================
+		  //							DEKORACJA
+		  // ==================================================================================================
+		  free_conn = 0, recv_conn = 0, send_conn = 0;
+        for (int i = 0; i < MAX_CONNECTION; i++) {
+            switch (conn[i].status) {
+                case CONNSTATE_IDLE: 			free_conn++; break;
+                case CONNSTATE_RECEIVING: 	recv_conn++; break;
+                case CONNSTATE_SENDING: 		send_conn++; break;
+            }
+        }
+        static int loopnr = 0;
+        printf("connections: sending: %d  receiving: %d   free: %d     %d \r", send_conn, recv_conn, free_conn, loopnr++);
+        usleep(5000);
+    }
+
+}

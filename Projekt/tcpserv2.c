@@ -58,9 +58,6 @@ struct conninfo{
    int stepcnt;
    int port;
    char type;
-	
-	struct sockaddr_in gniazdo,klient;   
-	socklen_t klient_len;    
    
 	int id_client;
 	int id_sub_client;
@@ -69,12 +66,12 @@ struct conninfo{
    
    
    // Odbieranie
-   unsigned char recv_buffer[1024];
+   unsigned char recv_buffer[1000];
    unsigned to_recv;
    unsigned char *recv_ptr;   
    
    // Wysylanie
-   unsigned char send_buffer[1024];
+   unsigned char send_buffer[1000];
    unsigned to_send;
    unsigned char *send_ptr;
 };
@@ -89,7 +86,7 @@ struct conninfo conn[MAX_CONNECTION];    // Tablica klientów - 20 miejsc na kli
 int free_conn = 0, recv_conn = 0, send_conn = 0; // Deklaruje zmienne ilości danych typów połączeń by były gloalne
 int id_client=0;
 int Nowy_port;
-
+char* temp_buffer;
 
 
 
@@ -132,14 +129,6 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
             conn[i].name_pos = 0;    						// Ustawiamy pozycje do nazwy na 0 by mógł zapisać od poczatku
             conn[i].id_client = main_id;
             conn[i].type = type;
-            
-				if(type == 'U')
-				{
-					    serwer.sin_family = AF_INET,		// Typ IP
-   					 serwer.sin_port = htons(Nowy_port);		// Numer portu konewrtowany z INT na typ "SIECIOWY" (HOST to NETWORK short)	
-						 Nowy_port++;
-				}            
-            
             
 				if ((name != NULL) && (strlen(name) > 0))
 				{
@@ -193,13 +182,12 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
 	strncpy(wynik, start + 1, end - start - 1);				//|	
 	wynik[length] = '\0';  // Dodajemy null-terminator		//|
-	printf("Wartość : %s \n",wynik);							   //|	
+	printf("   Wartość : %s /n",wynik);							//|	
 	
     //conn[i].status = CONNSTATE_SENDING; // Po tym jak otrzymamy od klienta komende ustawiamy go na 
                                         // odczyt
 
 	int len = 0;	
-	int retval;
 
    int required_length;
    char *send_buffer;
@@ -218,7 +206,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 // ==========================================
 	case 'N':
 	printf ("Komenda N: ");
-
+	printf ("\033[40;0H|Sprawdzam 1| \n");
 		
 	
 	save_name(i,wynik);
@@ -270,11 +258,10 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
     required_length = snprintf(NULL, 0, "#UOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
     send_buffer = malloc(required_length + 1);
     sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
-    bind(new_UDP_socket,(struct sockaddr*)&conn[i].gniazdo, sizeof(conn[i].gniazdo));
-    send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
+    
+    send(new_UDP_socket, send_buffer, required_length, MSG_NOSIGNAL); 
 
 
-	 printf ("Poszło \n");
 
 	break;		
 
@@ -328,9 +315,10 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 
 	}
 
+	free(wynik);
+	free(send_buffer);
     
 }
-
 
 
 
@@ -371,8 +359,7 @@ int main(int argc, char *argv[])
 {
 	fd_set readfds, writefds; // fd_set - to struktura || Zmienne read i write(fds) są tworzone na podstawie 
 	int maxfd;					  // maxfd - mówi ile jest Klientów obecnie.
-
-
+	temp_buffer = malloc(1024); 
 	
 
 
@@ -394,7 +381,7 @@ int main(int argc, char *argv[])
     serwer.sin_family = AF_INET,		// Typ IP
     serwer.sin_port = htons(port_number);		// Numer portu konewrtowany z INT na typ "SIECIOWY" (HOST to NETWORK short)
     
-   Nowy_port = port_number + 2000;	// Tworze zmienna do różnych portów dla UDP
+   Nowy_port = port_number;	// Tworze zmienna do różnych portów dla UDP
         
 	int retval = inet_pton( AF_INET, SERWER_IP, & serwer.sin_addr );    // Konwertuje IP na BINARNY
     
@@ -508,6 +495,15 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
             if (conn[i].sock > maxfd)
                 maxfd = conn[i].sock; // Jeśli to jest najnowsze połączenie to mówimy o tym maxfd by wiedział ile jest połączeń
         }
+        
+        
+		  //  Jeśli połączenie jest gotowe do wysłania danych        
+        else if (conn[i].status == CONNSTATE_SENDING)   // CONNSTATE_SENDING - Stan wysyłający
+        {
+            FD_SET(conn[i].sock, &writefds);	// dodajemy połączenie/gniazdo do writefds 
+            if (conn[i].sock > maxfd)
+                maxfd = conn[i].sock;	// podobnie jak wyżej
+        }
     }
 
 
@@ -517,7 +513,7 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 
 
 	 
-    int activity = select(maxfd + 1, &readfds, NULL, NULL, &timeout);  //Serce programu - SELECT
+    int activity = select(maxfd + 1, &readfds, &writefds, NULL, &timeout);  //Serce programu - SELECT
 																		// maxfd + 1 - Sprawdzamy do Najwiekszego deskryptorora + 1 bo to nie >=
 																		// Zbiór gniazd do odczytywania daynych
 																		// Zbiór gniazd do wysyłania danych
@@ -531,28 +527,18 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 
     if (FD_ISSET(listen_sock, &readfds))// Sprawdz czy jest nowe połączenie
     {
-    	  int newsock = accept(listen_sock, NULL, NULL);
-        
-        for (int i = 0; i < MAX_CONNECTION; i++)
-    	  		if(conn[i].sock == newsock && conn[i].type == 'U')
-    	  		{
-    	  			retval = recvfrom(newsock,conn[i].recv_buffer,sizeof(conn[i].recv_buffer),0,(struct sockaddr*)&conn[i].gniazdo,&conn[i].klient_len);
-    	  			printf("Co ja dostałem niby: %s \n",conn[i].recv_buffer);
-    	  		}
-    	  		else if(conn[i].sock == newsock && conn[i].type == 'T')
-    	  		{
-					printf("mamy TCP");
-    	  		}
-    	  		else 
-    	  		{
-    	  			
-    	  			id_client++;
-					commands(newsock,"#C@:;!");
-					break;
-    	  		}
-
-        
-
+    	  // Akceptuje połączenie jeśli jakieś jest
+        int newsock = accept(listen_sock, NULL, NULL);
+        if (newsock >= 0)
+        {
+        	
+        	id_client++;
+        	int retval = recv(newsock, temp_buffer, sizeof(temp_buffer), 0); // Odbieranie od połączenia wiadomości 1 znaku do zmiennej 'c'|| 0-flaga
+			commands(newsock,temp_buffer);    
+         
+         //add_new_conn(newsock,NULL,id_client,0,'C');   
+                
+        }
     }
 
 
@@ -575,29 +561,33 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
             unsigned char c; // Zmienna do odbierania
             int retval = recv(conn[i].sock, conn[i].recv_buffer, sizeof(conn[i].recv_buffer), 0); // Odbieranie od połączenia wiadomości 1 znaku do zmiennej 'c'|| 0-flaga
              
-            
+            	printf ("\033[45;0H|Sprawdzam 2| \n");
             if (retval > 0)
             {
             	 printf("Recv: %d  Wiadomosc: %s \n", retval,conn[i].recv_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG   
             	 
                 printf("Wartosć :");
                 commands(i, conn[i].recv_buffer); // Funkcja || Pobiera indeks połączenia i bit wiadomości ze zmiennej c
-                memset(&conn[i].recv_buffer, 0, sizeof(conn[i].recv_buffer));
             }
             else
                 recv_zero(i);		// Funkcja || Pobiera indeks połączenia i bit wiadomości ze zmiennej c
         }
-  
         
         
-  
+        
+        	
+        
+        
+        
+        
+     
 
         else if (conn[i].status == CONNSTATE_CLOSING)   // No jak połączenie chce sie zamknąć to niech sie zamknie    	
         {																																						
         		printf("\nZamknieto polaczenie: %d", conn[i].full_id); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG  						
             close_conn(i);																																
         }																																						
-
+    
     }
 
 

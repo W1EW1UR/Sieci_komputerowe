@@ -2,13 +2,17 @@
 // informacje o polaczeniach  - Struktura połączeń
 //===========================================================================
 
+
 struct conninfo{
    int status;   
    int sock;
    unsigned char name[NAME_SIZE+1];
    unsigned int name_pos;
    int stepcnt;
+   int port;
    char type;
+	struct sockaddr_in gniazdo;   
+   
    
 	int id_client;
 	int id_sub_client;
@@ -25,8 +29,6 @@ struct conninfo{
    unsigned char send_buffer[1000];
    unsigned to_send;
    unsigned char *send_ptr;
-
-
 
 /===========================================================================
 // odebrano 1 znak  i - indeks polaczenia  c-odebrany znak
