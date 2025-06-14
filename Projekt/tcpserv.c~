@@ -44,7 +44,7 @@
 #define SERWER_IP "0.0.0.0" 
 int port_number;
 struct sockaddr_in serwer;
-
+fd_set readfds; //robie to jako globalne
 
 //===========================================================================
 // informacje o polaczeniach  - Struktura połączeń
@@ -135,7 +135,8 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
             
 				if(type == 'U')
 				{
-					    serwer.sin_family = AF_INET,		// Typ IP
+					    serwer.sin_family = AF_INET;		// Typ IP
+					    inet_pton(AF_INET, "0.0.0.0", &serwer);		//  IP					    
    					 serwer.sin_port = htons(Nowy_port);		// Numer portu konewrtowany z INT na typ "SIECIOWY" (HOST to NETWORK short)	
 						 Nowy_port++;
 				}            
@@ -185,18 +186,23 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	printf("\033[20;0H");
 	
 	printf("\033[19;0H wiadomosc: %s\n",c);	
-		
-	char *start = strchr(c, ':');									//|
-	char *end = strchr(c, ';');									//|
-	size_t length = end - start - 1;								//|
-																			//|	Wyznaczam wartość z komendy 
-	char *wynik = malloc(length + 1);  // +1 na '\0'		//|
-	strncpy(wynik, start + 1, end - start - 1);				//|	
-	wynik[length] = '\0';  // Dodajemy null-terminator		//|
-	printf("Wartość : %s \n",wynik);							   //|	
+	char *wynik;	
+
+	if(strchr(c, ':') > 0) {
+		char *start = strchr(c, ':');	
+		char *end = strchr(c, ';');	
+		size_t length = end - start - 1;
+																	    		//|	Wyznaczam wartość z komendy 
+		wynik = malloc(length + 1);  // +1 na '\0'		//|
+		strncpy(wynik, start + 1, end - start - 1);				//|	
+		wynik[length] = '\0';  // Dodajemy null-terminator		//|
+		printf("Wartość : %s \n",wynik);							   //|	
 	
-    //conn[i].status = CONNSTATE_SENDING; // Po tym jak otrzymamy od klienta komende ustawiamy go na 
-                                        // odczyt
+	}
+	else {
+		wynik = "";
+		printf("Brak wartosci komendy: %s \n",wynik);
+	}
 
 	int len = 0;	
 	int retval;
@@ -235,7 +241,6 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	case 'T':
 	printf ("Komenda na utworzenie polaczenia TCP\n");
-	/*
 	
 	int new_TCP_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);			//Tworze gniazdo TCP NIEBLOKUJĄCY
 	
@@ -252,7 +257,6 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
     sprintf(send_buffer,"#TOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
 	
-	*/ 
 	
 	break;	
 
@@ -260,19 +264,24 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 
 	case 'U':   
 	printf ("Komenda na utworzenie polaczenia UDP\n");
-	
+	 
 	 int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
 	 
-	
     conn[i].pom_sub_id++;
 	 add_new_conn(new_UDP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'U');
 	 
     required_length = snprintf(NULL, 0, "#UOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
     send_buffer = malloc(required_length + 1);
     sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
-    bind(new_UDP_socket,(struct sockaddr*)&conn[i].gniazdo, sizeof(conn[i].gniazdo));
+    retval = bind(new_UDP_socket,(struct sockaddr*)&conn[i].gniazdo, sizeof(conn[i].gniazdo));
+    if(retval == 0)
+    {
+		printf("Bind ok.") ;
+    
+    }
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
 
+	 FD_SET(new_UDP_socket,&readfds); // wrzucam 
 
 	 printf ("Poszło \n");
 
@@ -369,7 +378,7 @@ void send_char(int i)
 //===========================================================================
 int main(int argc, char *argv[])
 {
-	fd_set readfds, writefds; // fd_set - to struktura || Zmienne read i write(fds) są tworzone na podstawie 
+	fd_set readfds; // fd_set - to struktura || Zmienne read i write(fds) są tworzone na podstawie 
 	int maxfd;					  // maxfd - mówi ile jest Klientów obecnie.
 
 
@@ -472,9 +481,8 @@ int main(int argc, char *argv[])
 {
 	
 
-FD_ZERO(&readfds);		// Zerowanie zbioru dla gniazd do odczytu
-FD_ZERO(&writefds);		// Zerowanie zbioru dla gniazd do zapisu
-maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna w skrócie mówi ile jest obecnie połączeń)
+	FD_ZERO(&readfds);		// Zerowanie zbioru dla gniazd do odczytu
+	maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna w skrócie mówi ile jest obecnie połączeń)
 
     // Dodaj gniazdo nasłuchujące do zbioru read
     FD_SET(listen_sock, &readfds);					// Dodaje gniazdo nasłuchujące do zbioru readfds bo select będzie sprawdzał
@@ -496,8 +504,60 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
 // ====================================================================
 // Segregacja połączeń
 // ====================================================================
-
     // Dodaj aktywne połączenia do zbiorów
+    for (int i = 0; i < MAX_CONNECTION; i++)
+    {
+			
+		  //  Jeśli połączenie jest gotowe do odbioru danych
+        if (conn[i].status == CONNSTATE_RECEIVING)		// CONNSTATE_RECEIVING - Stan odbierający
+        {
+            FD_SET(conn[i].sock, &readfds); // dodaje połączenie/gniazdo do readfds
+            if (conn[i].sock > maxfd)
+                maxfd = conn[i].sock; // Jeśli to jest najnowsze połączenie to mówimy o tym maxfd by wiedział ile jest połączeń
+         }
+
+    }
+
+// ====================================================================
+// ====================================================================
+
+	
+	
+	 
+    int activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);  //Serce programu - SELECT
+																		// maxfd + 1 - Sprawdzamy do Najwiekszego deskryptorora + 1 bo to nie >=
+																		// Zbiór gniazd do odczytywania daynych
+																		// Zbiór gniazd do wysyłania danych
+
+    if (activity < 0)    // Obsługa błędu
+    {
+        perror("select() ERROR");
+        continue;
+    }
+
+    printf("\033[20;30H Select(): %d ",activity);
+    
+    	if( FD_ISSET(listen_sock,&readfds) ) // Patrzymy czy mamy jakieś nowe połączenie do dodania
+	     	{
+				int newsock = accept(listen_sock, NULL, NULL);
+
+				int Zawiera = 1; 
+	     		for(int i = 0; i < MAX_CONNECTION; i++)
+	     		{
+					if(newsock == conn[i].sock)
+					{
+						Zawiera = 0;
+					}
+	     		}    	  		
+	     		if(Zawiera==1) {
+		     			id_client++;
+						commands(newsock,"#C@:;!");
+	     		}
+	     	}    
+    
+    printf("\033[20;0H");
+
+
     for (int i = 0; i < MAX_CONNECTION; i++)
     {
 
@@ -510,50 +570,30 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
         }
     }
 
+    
 
-// ====================================================================
-// ====================================================================
+    for (int i = 0; i < MAX_CONNECTION; i++){	// Sprawdzamy czy UDP i TCP coś mają do przekazania 
+			printf("Status połączenia [%d] = %d || %d \n",i,conn[i].status,FD_ISSET(conn[i].sock,&readfds));  	
+	     	if(FD_ISSET(conn[i].sock,&readfds) )
+	     	{
+		     		switch(conn[i].type) {
+	     			
+	     			case 'U':
+	     	    		retval = recvfrom(conn[i].sock,conn[i].recv_buffer,sizeof(conn[i].recv_buffer),0,(struct sockaddr*)&conn[i].gniazdo,&conn[i].klient_len);
+			      	printf("\033[20;40H Co ja dostałem niby: %s \n",conn[i].recv_buffer);
+					break;	     	
+										     			
+	     			case 'T':
+	     			break;
+	     			
+	     			
+	     			case 'C':
+	     			break;
+	     			
+	     			}    
+	 }
+	}
 
-
-
-	 
-    int activity = select(maxfd + 1, &readfds, NULL, NULL, &timeout);  //Serce programu - SELECT
-																		// maxfd + 1 - Sprawdzamy do Najwiekszego deskryptorora + 1 bo to nie >=
-																		// Zbiór gniazd do odczytywania daynych
-																		// Zbiór gniazd do wysyłania danych
-
-    if (activity < 0)    // Obsługa błędu
-    {
-        perror("select() ERROR");
-        continue;
-    }
-
-
-    if (FD_ISSET(listen_sock, &readfds))// Sprawdz czy jest nowe połączenie
-    {
-    	  int newsock = accept(listen_sock, NULL, NULL);
-        
-        for (int i = 0; i < MAX_CONNECTION; i++)
-    	  		if(conn[i].sock == newsock && conn[i].type == 'U')
-    	  		{
-    	  			retval = recvfrom(newsock,conn[i].recv_buffer,sizeof(conn[i].recv_buffer),0,(struct sockaddr*)&conn[i].gniazdo,&conn[i].klient_len);
-    	  			printf("Co ja dostałem niby: %s \n",conn[i].recv_buffer);
-    	  		}
-    	  		else if(conn[i].sock == newsock && conn[i].type == 'T')
-    	  		{
-					printf("mamy TCP");
-    	  		}
-    	  		else 
-    	  		{
-    	  			
-    	  			id_client++;
-					commands(newsock,"#C@:;!");
-					break;
-    	  		}
-
-        
-
-    }
 
 
 
@@ -629,7 +669,9 @@ maxfd = listen_sock;		// Ustawienie maxfd na gniazdo nasłuchujące (Ta zmienna 
     // Dekoracja
  	      
     printf("\033[0;0H");
-    printf("connections: sending: %d  receiving: %d   free: %d     %d \r", send_conn, recv_conn, free_conn, loopnr++);
+    //   printf("connections: sending: %d  receiving: %d   free: %d     %d \r", send_conn, recv_conn, free_conn, loopnr++);
+	     
+    
     usleep(1000000); // Nie wykonuje sie z prędkością procesora tylko co 5 sekund chyba albo 0.5 albo 0.05													// usleep(1000000) = 1 sekunda
     
 }

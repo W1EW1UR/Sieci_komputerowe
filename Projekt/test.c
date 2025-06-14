@@ -24,6 +24,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 // ==========================================================================
+//---WH--- co ma byc wyswietlane
+int show_network=1;
+int show_select = 1;
+int show_flow = 1;
+
+
+
+
 
 //===========================================================================
 // status polaczenia
@@ -114,17 +122,19 @@ void save_name(int i, unsigned char* c)		//zapisujemy nazwe
 }
 
 
-
-
 //===========================================================================
 // dodanie nowego polaczenia		fd - deksryptor czyli gniazdo
 //===========================================================================
-void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
+int add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
 {
+    if (show_flow)
+        printf("add_new_conn type:%c  sock:%d\n",type,fd);
+    
     for (int i=0; i<MAX_CONNECTION; i++)	// Iteruje po wszystkich polaczeniach
-    {
+    {       
         if (conn[i].status == CONNSTATE_IDLE)  // Sprawdza czy stan polaczenia jest "NIEOBECNY"
         {
+            
             bzero(&conn[i],sizeof(conn[i]));		// Czysci miejsce na polaczenie jesli cos zostalo
             
             conn[i].sock = fd;								// Przypisuje gniazdo
@@ -135,10 +145,17 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
             
 				if(type == 'U')
 				{
+				    
 					    serwer.sin_family = AF_INET;		// Typ IP
 					    inet_pton(AF_INET, "0.0.0.0", &serwer);		//  IP					    
    					 serwer.sin_port = htons(Nowy_port);		// Numer portu konewrtowany z INT na typ "SIECIOWY" (HOST to NETWORK short)	
-						 Nowy_port++;
+
+//                    ---WH---     
+                   conn[i].gniazdo.sin_family = AF_INET;		// Typ IP
+					    inet_pton(AF_INET, "0.0.0.0",&conn[i].gniazdo.sin_addr) ;        //  IP                      
+   					 conn[i].gniazdo.sin_port = htons(Nowy_port);		// Numer portu konewrtowany z INT na typ "SIECIOWY" (HOST to NETWORK short)	
+   					 conn[i].port = Nowy_port;
+						 Nowy_port++;   
 				}            
             
             
@@ -153,10 +170,13 @@ void add_new_conn(int fd,char* name,int main_id,int sub_id,char type)
 				
 				conn[i].full_id = (conn[i].id_client << 16) | conn[i].id_sub_client;
             
-				printf ("Udało sie dodać połączenie\n");
-            break;
+				printf ("Udało sie dodać połączenie  %d\n",i);
+                return(i);
+        
         }
 	 }
+    //---WH---
+    return(-1);
 
 }
 
@@ -182,18 +202,21 @@ void close_conn(int i)
 //===========================================================================
 void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy conn[i].name
 {
-	printf("\033[2J");
-	printf("\033[20;0H");
-	
-	printf("\033[19;0H wiadomosc: %s\n",c);	
+//---WH---
+//	printf("\033[2J");
+//	printf("\033[20;0H");
+
+//---WH---  tak Pan nie moze wypisywac bo gdy w buforze nie bedzie \0 to bedzie segmentation fault
+//	printf("\033[19;0H wiadomosc: %s\n",c);	
 	char *wynik;	
 
-	if(strchr(c, ':') > 0) {
+	if(strchr(c, ':') > 0) {  //---ten sposob postepowania jest zly,. nie sprawdza tagow a tylko 2 komendy maja parametry
 		char *start = strchr(c, ':');	
 		char *end = strchr(c, ';');	
 		size_t length = end - start - 1;
 																	    		//|	Wyznaczam wartość z komendy 
-		wynik = malloc(length + 1);  // +1 na '\0'		//|
+																	    		
+		wynik = malloc(length + 1);  // +1 na '\0'		//| //---WH--- agdzie jest free do tego malloca
 		strncpy(wynik, start + 1, end - start - 1);				//|	
 		wynik[length] = '\0';  // Dodajemy null-terminator		//|
 		printf("Wartość : %s \n",wynik);							   //|	
@@ -211,13 +234,13 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
    char *send_buffer;
 	
 	
-	switch (c[1])
+	switch (c[1])//---WH--- w specyfikacji nie ma komency C rozumiem ze pan ja sobie sztucznie tworzy ale czy to nie zaciemnia kodu?
 	{
 		
 	case 'C':
 	printf ("Komenda C: ");
 	
-	add_new_conn(i,NULL,id_client,0,'C'); 
+	add_new_conn(i,NULL,id_client,0,'C'); //---WH--- a pod jaki indeks to zosta�o dodane czy to nie ma znaczenia?
 				        
 	break;	
 
@@ -235,6 +258,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
     sprintf(send_buffer,"#NOK@CONNECTION:%d;!",conn[i].full_id);
     
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 			        
+	 free(send_buffer);	
 	break;	
 
 // ==========================================
@@ -257,7 +281,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
     sprintf(send_buffer,"#TOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
 	
-	
+	free(send_buffer);
 	break;	
 
 // ==========================================
@@ -268,23 +292,36 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	 int new_UDP_socket = socket(AF_INET, SOCK_DGRAM , 0);		//Tworze gniazdo UDP
 	 
     conn[i].pom_sub_id++;
-	 add_new_conn(new_UDP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'U');
-	 
-    required_length = snprintf(NULL, 0, "#UOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
-    send_buffer = malloc(required_length + 1);
-    sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
-    retval = bind(new_UDP_socket,(struct sockaddr*)&conn[i].gniazdo, sizeof(conn[i].gniazdo));
+   //---najpierw powinien byc bind potem dodanie polaczenia bo jak bind sie nie uda trzeba szukac nowego portu
+   //---WH---  tu byl blad najwiekszy - programowany byl adres w polu gniazdo ale na indeks
+   //  nowego polaczenia a i to indeks polaczenia C
+	int newI = add_new_conn(new_UDP_socket,conn[i].name,conn[i].id_client,conn[i].pom_sub_id,'U');
+    printf("New index of Uconnection: %d\n",newI);
+
+    retval = bind(new_UDP_socket,(struct sockaddr*)&conn[newI].gniazdo, sizeof(conn[newI].gniazdo));
     if(retval == 0)
     {
 		printf("Bind ok.") ;
     
     }
+    //---WH---
+    // to jest jeden z bardziej kuriozalnych sposobow wysylania odpowiedzi
+    // gdzie jest free() do tego malloca,. po ilu odpowiedziech zabraknie pamieci?
+    // a bufora nadawczego w polaczeniu nie ma?
+    // a co bedzie jak send wysle tylo czesc odpowiedzi?  brak reakcji na wyniks end
+    //--- a port number to czemu jest 8000?
+    // required_length = snprintf(NULL, 0, "#UOK@PORT:%d;CONNECTION:%d;!", port_number, conn[i].full_id);
+    required_length = sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",conn[newI].port,conn[newI].full_id); 
+    send_buffer = malloc(required_length + 1);
+   // sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",port_number,conn[i].full_id);
+    sprintf(send_buffer,"#UOK@PORT:%d;CONNECTION:%d;!",conn[newI].port,conn[newI].full_id);
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
 
-	 FD_SET(new_UDP_socket,&readfds); // wrzucam 
+    //---WH--- w metodzie 1 programowania select zestawy zmieniamy TYLKO przed selectem
+//	 FD_SET(new_UDP_socket,&readfds); // wrzucam 
 
-	 printf ("Poszło \n");
-
+//	 printf ("Poszło \n"); //---WH--- niby co poszlo jak nie jes sprawdzony rezultat send???
+	free(send_buffer);
 	break;		
 
 // ==========================================
@@ -293,14 +330,13 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	printf ("Komenda A");
 
    
-	printf("\nSend: %s  \n", conn[i].send_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG    
-                                                    // MUSHROOM! MUSHROOM!
-
+	printf("\nSend: %s  \n", conn[i].send_buffer); 
+	
     required_length = snprintf(NULL, 0, "#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
     send_buffer = malloc(required_length + 1);
     sprintf(send_buffer,"#AOK@ALL:%d;!", MAX_CONNECTION-free_conn);
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
-
+	free(send_buffer);
 	
 	break;	
 
@@ -313,7 +349,7 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
     send_buffer = malloc(required_length + 1);
     sprintf(send_buffer,"#FOK@FREE:%d;!", free_conn);
     send(conn[i].sock, send_buffer, required_length, MSG_NOSIGNAL); 
-
+	free(send_buffer);
 
    
 	break;
@@ -322,8 +358,10 @@ void commands(int i, unsigned char* c)		//Zapisujemy nazwe uzytkownika w tablicy
 	
 	case 'K': //Wolne polaczenia
 	printf ("Komenda K");
-	
-	printf("\033[19;0H wiadomosc: %s",c);	
+
+    //---WH---
+    // gdy nie ma 0 nie mozna tak wypisywac jezeli nie ma perwnosci czy na ko�cu jest \0
+	//printf("\033[19;0H wiadomosc: %s",c);	
 	
 	
    for (int i = 0; i < MAX_CONNECTION; i++)
@@ -373,6 +411,67 @@ void send_char(int i)
 
 
 
+
+
+//===========================================================================
+// 
+//===========================================================================
+int Uconn_handle_read(int idx)
+{
+    conn[idx].klient_len =  sizeof(conn[idx].klient);
+
+    int retval = recvfrom(conn[idx].sock,conn[idx].recv_buffer,sizeof(conn[idx].recv_buffer),0,(struct sockaddr*)&conn[idx].klient,&conn[idx].klient_len);
+    if (show_network)
+        printf("#%d  recvfrom returns:%d\n",idx,retval);
+   //---WH--- dalej sobie Pan sam napisze, ja tylko na g�upio odsy�am
+   if (retval>0)
+   {
+        int retsend = sendto(conn[idx].sock,conn[idx].recv_buffer,retval,0,(struct sockaddr*)&conn[idx].klient,conn[idx].klient_len);
+        if (show_network)
+            printf("#%d  sendto returns:%d\n",idx,retsend);
+        
+    }
+   else {
+
+    }
+}
+
+//===========================================================================
+// 
+//===========================================================================
+int Tconn_handle_read(int idx)
+{
+    //---WH zalozenie ze buyfor jest pusty dla tcp jezeli odbieramy po kawalku jest zleto trzeba poprawic    
+    int retval = recv(conn[idx].sock,conn[idx].recv_buffer,sizeof(conn[idx].recv_buffer),0);
+    if (show_network)
+        printf("#%d  recv returns:%d\n",idx,retval);
+    //---WH--- dalej sobie Pan sam napisze ja odsylam bez liczenia
+    if (retval>0)
+    {
+         int retsend = send(conn[idx].sock,conn[idx].recv_buffer,retval,MSG_NOSIGNAL);
+         if (show_network)
+             printf("#%d  send returns:%d\n",idx,retsend);
+         
+     }
+    else {
+    
+     }
+
+}
+
+
+//===========================================================================
+// ---WH--- tu obie prosze przeniesc odbior danych z kanalu c
+//===========================================================================
+int Cconn_handle_read(int idx)
+{
+
+}
+
+
+
+
+
 //=============================================================================================================================
 // glowna petla
 //===========================================================================
@@ -415,7 +514,7 @@ int main(int argc, char *argv[])
 
 
 
-   
+   //---WH--- listen sock jest nieblokujacy a mai� by� blokujacy !!!
 	int listen_sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0); // Tworze Socket 
 	 																		// AF_INET - Typ IPv4
 	 																		// SOCK_STREAM - Typ protokołu | Dla TCP 
@@ -429,7 +528,12 @@ int main(int argc, char *argv[])
    
    
    
-   
+
+//---WH---
+    int opt =1;
+    int optlen = sizeof(opt); 
+    setsockopt(listen_sock,SOL_SOCKET,SO_REUSEADDR,&opt,optlen);
+    setsockopt(listen_sock,SOL_SOCKET,SO_REUSEPORT,&opt,optlen);   
    
    
    
@@ -446,7 +550,6 @@ int main(int argc, char *argv[])
         perror( "bind() ERROR" );
         exit( 3 );
     }
-
 
 
 
@@ -470,8 +573,8 @@ int main(int argc, char *argv[])
 
 
 
-   
-   printf("\033[2J");	// czyszcze ekran przed petla
+   //---WH---
+   //printf("\033[2J");	// czyszcze ekran przed petla
    
 // =====================================================================================================================
 // GLOWNA PETLA
@@ -502,7 +605,7 @@ int main(int argc, char *argv[])
 
 
 // ====================================================================
-// Segregacja połączeń
+// Segregacja połączeń   ---WH--- to jest przygotowanie zestawow bardziej 
 // ====================================================================
     // Dodaj aktywne połączenia do zbiorów
     for (int i = 0; i < MAX_CONNECTION; i++)
@@ -519,6 +622,13 @@ int main(int argc, char *argv[])
     }
 
 // ====================================================================
+      if (show_select){        
+         printf("przed select:\n");
+         //for (int i = 0; i < MAX_CONNECTION; i++)            
+         for (int i = 0; i < 6; i++)
+             printf("#%d   s:%d   r:%d \n",i,conn[i].sock,FD_ISSET(conn[i].sock,&readfds));      
+       }
+
 // ====================================================================
 
 	
@@ -534,12 +644,17 @@ int main(int argc, char *argv[])
         perror("select() ERROR");
         continue;
     }
+//---WH---
+//    printf("\033[20;30H Select(): %d ",activity);
+      printf("Select(): %d \n",activity);
 
-    printf("\033[20;30H Select(): %d ",activity);
 
-		for (int i = 0; i < MAX_CONNECTION; i++)
+      if (show_select){        
+         printf("po select:\n");
+		//for (int i = 0; i < MAX_CONNECTION; i++)            
+		 for (int i = 0; i < 6; i++)
     			printf("#%d   s:%d   r:%d \n",i,conn[i].sock,FD_ISSET(conn[i].sock,&readfds));      
-    
+      }
     
     	if( FD_ISSET(listen_sock,&readfds) ) // Patrzymy czy mamy jakieś nowe połączenie do dodania
 	     	{
@@ -558,11 +673,11 @@ int main(int argc, char *argv[])
 						commands(newsock,"#C@:;!");
 	     		}
 	     	}    
-    
-    printf("\033[20;0H");
+    //---WH---
+    //printf("\033[20;0H");
 
-
-    for (int i = 0; i < MAX_CONNECTION; i++)
+//---WH---   a tu sobie niszczymy zawartosc readfs  - tu jest straszny ba�agan w kodzie
+/*    for (int i = 0; i < MAX_CONNECTION; i++)
     {
 
 		  //  Jeśli połączenie jest gotowe do odbioru danych
@@ -573,9 +688,9 @@ int main(int argc, char *argv[])
                 maxfd = conn[i].sock; // Jeśli to jest najnowsze połączenie to mówimy o tym maxfd by wiedział ile jest połączeń
         }
     }
-
+*/
     
-
+//---WH--- Tu jest odbior danych 
     for (int i = 0; i < MAX_CONNECTION; i++){	// Sprawdzamy czy UDP i TCP coś mają do przekazania 
 			printf("Status połączenia [%d] = %d || %d \n",i,conn[i].status,FD_ISSET(conn[i].sock,&readfds));  	
 	     	if(FD_ISSET(conn[i].sock,&readfds) )
@@ -583,11 +698,16 @@ int main(int argc, char *argv[])
 		     		switch(conn[i].type) {
 	     			
 	     			case 'U':
-	     	    		retval = recvfrom(conn[i].sock,conn[i].recv_buffer,sizeof(conn[i].recv_buffer),0,(struct sockaddr*)&conn[i].gniazdo,&conn[i].klient_len);
-			      	printf("\033[20;40H Co ja dostałem niby: %s \n",conn[i].recv_buffer);
-					break;	     	
+                       //---WH---    przenioslem do osobnej funkcji
+                       Uconn_handle_read(i);
+                       //---WH---     
+                       // tak nie mozna wytpisywac zawartosci binarnej !!!!! bedzie segmentatniam fault
+                       // napisalem kod w poradach 
+			         	//printf("\033[20;40H Co ja dostałem niby: %s \n",conn[i].recv_buffer);
+					  break;	     	
 										     			
 	     			case 'T':
+                        Tconn_handle_read(i);
 	     			break;
 	     			
 	     			
@@ -604,25 +724,27 @@ int main(int argc, char *argv[])
 
 
 
-
-	printf("\033[1;0H");
-
+//---WH---
+//	printf("\033[1;0H");
+//---WH---
+// a tu jest drugie odbieranie danych - to sie robi bardzo nieczytelne kodu odbierajacego dane !!!!!!!!    
     // Lecimy po wszystkich połączeniach i sie nimi zajmujemy
     for (int i = 0; i < MAX_CONNECTION; i++)
     {
-
-
-
         if (conn[i].status == CONNSTATE_RECEIVING && FD_ISSET(conn[i].sock, &readfds)) // KLIENT "WYSYLA" 
         {
         	
-            unsigned char c; // Zmienna do odbierania
-            int retval = recv(conn[i].sock, conn[i].recv_buffer, sizeof(conn[i].recv_buffer), 0); // Odbieranie od połączenia wiadomości 1 znaku do zmiennej 'c'|| 0-flaga
-             
+            unsigned char c; // Zmienna do odbierania  //---WH--- to powodzenia zycze przy takim odbieraniu poloczen U
+            int retval = recv(conn[i].sock, conn[i].recv_buffer, sizeof(conn[i].recv_buffer), 0); // Odbieranie od połączenia wiadomości 1 znaku do zmiennej 'c'|| 0-flaga            
             
-            if (retval > 0)
+            if ( retval > 0)
             {
-            	 printf("Recv: %d  Wiadomosc: %s \n", retval,conn[i].recv_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG   
+                 //---WH--- a gdzie jest 0 na koncu odebranych danych nie mozna takl wypisywac
+                 //---WH--- dodatem
+                 if (retval<sizeof(conn[i].recv_buffer)){
+                     retval,conn[i].recv_buffer[retval]='\0';
+                 	 printf("Recv: %d  Wiadomosc: %s \n", retval,conn[i].recv_buffer); // DEBUG - DEBUG - DEBUG - DEBUG - DEBUG - DEBUG   
+                 }
             	 
                 printf("Wartosć :");
                 commands(i, conn[i].recv_buffer); // Funkcja || Pobiera indeks połączenia i bit wiadomości ze zmiennej c
@@ -665,17 +787,22 @@ int main(int argc, char *argv[])
             case CONNSTATE_RECEIVING:	recv_conn++; 	break; 		 // Jeśli jest odbierajace to dodaje +1
             case CONNSTATE_SENDING: 	send_conn++; 	break;   	 // Jeśli jest wysyłajace to dodaje +1
         }
-        printf("\033[%d;15H		\nNazwa uzytkownika: %s \033[35Gid: %d %d \033[45G Full_id: %d   \033[65GTyp: %c\n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client,conn[i].full_id,conn[i].type); 
+//---WH---
+       // printf("\033[%d;15H		\nNazwa uzytkownika: %s \033[35Gid: %d %d \033[45G Full_id: %d   \033[65GTyp: %c\n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client,conn[i].full_id,conn[i].type); 
+        printf("%2d Nazwa: %s id: %d %d  Full_id:%d  Typ:%c\n",i+1,conn[i].name,conn[i].id_client,conn[i].id_sub_client,conn[i].full_id,conn[i].type); 
+
     }
 
     static int loopnr = 0;  // Ile razy sie cały pogram wykonał
     
     // Dekoracja
- 	      
-    printf("\033[0;0H");
-    //   printf("connections: sending: %d  receiving: %d   free: %d     %d \r", send_conn, recv_conn, free_conn, loopnr++);
+
+    //---WH---
+    ///printf("\033[0;0H");
+     printf("connections: sending: %d  receiving: %d   free: %d     %d \r", send_conn, recv_conn, free_conn, loopnr++);
+
 	     
-    
+    //---WH--- no po to w�asnie jest select czy poll zeby nie robic takich rzeczy ale na razi moze zostac
     usleep(1000000); // Nie wykonuje sie z prędkością procesora tylko co 5 sekund chyba albo 0.5 albo 0.05													// usleep(1000000) = 1 sekunda
     
 }
